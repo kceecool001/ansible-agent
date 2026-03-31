@@ -34,15 +34,21 @@ provider "aws" {
 #  Variables
 ################################################################################
 
-variable "aws_region"       { default = "us-east-1" }
+variable "aws_region"       { default = "eu-central-1" }
 variable "environment"      { default = "production" }
 variable "key_pair_name"    { description = "EC2 key pair for SSH access" }
-variable "anthropic_api_key"{ description = "Anthropic API key" ; sensitive = true }
+variable "anthropic_api_key" {
+  description = "Anthropic API key"
+  sensitive   = true
+}
 variable "your_cidr"        { description = "Your IP CIDR for SSH access, e.g. 1.2.3.4/32" }
 variable "worker_count"     { default = 3 }
 variable "master_instance"  { default = "t3.medium" }
 variable "worker_instance"  { default = "t3.small" }
-variable "domain_name"      { default = "" description = "Optional: yourdomain.com for Route53/ACM" }
+variable "domain_name" {
+  default     = ""
+  description = "Optional: yourdomain.com for Route53/ACM"
+}
 
 data "aws_availability_zones" "available" {}
 
@@ -153,7 +159,7 @@ resource "aws_security_group" "alb" {
 
 resource "aws_security_group" "master" {
   name        = "ansible-agent-master"
-  description = "Master controller — API, WS, SSH"
+  description = "Master controller - API, WS, SSH"
   vpc_id      = aws_vpc.main.id
 
   # SSH from your IP only
@@ -194,7 +200,7 @@ resource "aws_security_group" "master" {
 
 resource "aws_security_group" "workers" {
   name        = "ansible-agent-workers"
-  description = "Worker nodes — SSH from master, node_exporter from master"
+  description = "Worker nodes - SSH from master, node_exporter from master"
   vpc_id      = aws_vpc.main.id
 
   # SSH from master only
