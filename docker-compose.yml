@@ -1,0 +1,111 @@
+version: "3.9"
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Local development stack
+#  Usage:
+#    cp .env.example .env          # add your ANTHROPIC_API_KEY
+#    docker compose up --build     # spin everything up
+#    open http://localhost:3000    # dashboard
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── FastAPI backend ──────────────────────────────────────────────────────
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ansible-agent-backend
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      ANSIBLE_DIR: /ansible
+      ANSIBLE_INVENTORY: /ansible/inventory/hosts_local.ini
+      SCRAPE_INTERVAL: "5"
+      SCRAPE_TIMEOUT: "3.0"
+      PLAYBOOK_TIMEOUT: "300"
+      ADHOC_TIMEOUT: "60"
+      AI_TIMEOUT: "30.0"
+    volumes:
+      - ./ansible:/ansible:ro          # playbooks & inventory (read-only)
+      - ./ssh_keys:/root/.ssh:ro       # SSH keys for Ansible
+      - ./backend/main.py:/app/main.py # hot-reload in dev
+    networks:
+      - agent-net
+    depends_on:
+      - worker-01
+      - worker-02
+      - worker-03
+    healthcheck:
+      test: ["CMD-SHELL", "python3 -c 'import urllib.request; urllib.request.urlopen(\"http://localhost:8000/health\")' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  # ── React frontend (Vite dev server) ─────────────────────────────────────
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: dev
+    container_name: ansible-agent-frontend
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      VITE_API_URL: http://localhost:8000
+      VITE_WS_URL: ws://localhost:8000
+    volumes:
+      - ./frontend/src:/app/src        # hot-reload
+    networks:
+      - agent-net
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget --spider -q http://localhost:3000 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+
+  # ── Simulated worker nodes (Alpine + node_exporter + SSH) ────────────────
+  worker-01:
+    image: prom/node-exporter:v1.8.0
+    container_name: worker-01
+    hostname: worker-node-01
+    ports:
+      - "9101:9100"
+    networks:
+      agent-net:
+        ipv4_address: 172.28.0.11
+
+  worker-02:
+    image: prom/node-exporter:v1.8.0
+    container_name: worker-02
+    hostname: worker-node-02
+    ports:
+      - "9102:9100"
+    networks:
+      agent-net:
+        ipv4_address: 172.28.0.12
+
+  worker-03:
+    image: prom/node-exporter:v1.8.0
+    container_name: worker-03
+    hostname: worker-node-03
+    ports:
+      - "9103:9100"
+    networks:
+      agent-net:
+        ipv4_address: 172.28.0.13
+
+networks:
+  agent-net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/24

@@ -1,0 +1,106 @@
+---
+# bootstrap.yml — Run this ONCE on every node to prepare them for the agent.
+# Installs: ansible user, node_exporter, python3
+
+- name: Bootstrap all nodes
+  hosts: all
+  become: true
+  vars:
+    node_exporter_version: "1.8.0"
+    node_exporter_url: >-
+      https://github.com/prometheus/node_exporter/releases/download/v{{ node_exporter_version }}/node_exporter-{{ node_exporter_version }}.linux-amd64.tar.gz
+
+  tasks:
+    - name: Create ansible system user
+      ansible.builtin.user:
+        name: ansible
+        system: true
+        shell: /bin/bash
+        create_home: true
+        groups: sudo
+        append: true
+
+    - name: Add ansible user to sudoers (passwordless)
+      ansible.builtin.copy:
+        dest: /etc/sudoers.d/ansible
+        content: "ansible ALL=(ALL) NOPASSWD:ALL\n"
+        mode: "0440"
+
+    - name: Ensure .ssh directory exists for ansible user
+      ansible.builtin.file:
+        path: /home/ansible/.ssh
+        state: directory
+        owner: ansible
+        group: ansible
+        mode: "0700"
+
+    - name: Deploy SSH public key for ansible user
+      ansible.builtin.authorized_key:
+        user: ansible
+        state: present
+        key: "{{ lookup('file', '/root/.ssh/id_rsa.pub') }}"
+
+    - name: Install python3 and pip
+      ansible.builtin.package:
+        name:
+          - python3
+          - python3-pip
+        state: present
+
+    - name: Download node_exporter
+      ansible.builtin.get_url:
+        url: "{{ node_exporter_url }}"
+        dest: /tmp/node_exporter.tar.gz
+        mode: "0644"
+
+    - name: Extract node_exporter
+      ansible.builtin.unarchive:
+        src: /tmp/node_exporter.tar.gz
+        dest: /tmp/
+        remote_src: true
+
+    - name: Install node_exporter binary
+      ansible.builtin.copy:
+        src: "/tmp/node_exporter-{{ node_exporter_version }}.linux-amd64/node_exporter"
+        dest: /usr/local/bin/node_exporter
+        mode: "0755"
+        remote_src: true
+
+    - name: Create node_exporter systemd unit
+      ansible.builtin.copy:
+        dest: /etc/systemd/system/node_exporter.service
+        content: |
+          [Unit]
+          Description=Prometheus Node Exporter
+          After=network.target
+
+          [Service]
+          User=nobody
+          ExecStart=/usr/local/bin/node_exporter \
+            --collector.filesystem.mount-points-exclude='^/(sys|proc|dev|run)($|/)' \
+            --web.listen-address=:9100
+          Restart=always
+
+          [Install]
+          WantedBy=multi-user.target
+        mode: "0644"
+
+    - name: Enable and start node_exporter
+      ansible.builtin.systemd:
+        name: node_exporter
+        enabled: true
+        state: started
+        daemon_reload: true
+
+    - name: Check if ufw is installed
+      ansible.builtin.command: which ufw
+      register: ufw_check
+      failed_when: false
+      changed_when: false
+
+    - name: Open port 9100 (ufw if present)
+      community.general.ufw:
+        rule: allow
+        port: '9100'
+        proto: tcp
+      when: ufw_check.rc == 0

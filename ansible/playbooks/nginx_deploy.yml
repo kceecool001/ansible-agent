@@ -1,0 +1,47 @@
+---
+# nginx_deploy.yml — Install and configure nginx on worker nodes
+
+- name: Deploy nginx on workers
+  hosts: workers
+  become: true
+  vars:
+    nginx_port: 80
+    server_name: "{{ inventory_hostname }}"
+
+  handlers:
+    - name: Restart nginx
+      ansible.builtin.service:
+        name: nginx
+        state: restarted
+
+  tasks:
+    - name: Install nginx
+      ansible.builtin.package:
+        name: nginx
+        state: present
+
+    - name: Deploy default site config
+      ansible.builtin.template:
+        src: templates/nginx_default.j2
+        dest: /etc/nginx/sites-available/default
+        mode: "0644"
+      notify: Restart nginx
+
+    - name: Enable site
+      ansible.builtin.file:
+        src: /etc/nginx/sites-available/default
+        dest: /etc/nginx/sites-enabled/default
+        state: link
+
+    - name: Ensure nginx is started and enabled
+      ansible.builtin.service:
+        name: nginx
+        state: started
+        enabled: true
+
+    - name: Health check — port 80
+      ansible.builtin.uri:
+        url: "http://{{ ansible_host }}:80"
+        status_code: 200
+      delegate_to: localhost
+      failed_when: false

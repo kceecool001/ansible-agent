@@ -1,0 +1,13 @@
+# terraform/terraform.tfvars.example
+# Copy to terraform.tfvars and fill in your values.
+# NEVER commit terraform.tfvars to git.
+
+aws_region        = "us-east-1"
+environment       = "production"
+key_pair_name     = "your-keypair-name"          # Must exist in AWS
+anthropic_api_key = "sk-ant-api03-..."            # From console.anthropic.com
+your_cidr         = "YOUR_PUBLIC_IP/32"           # curl ifconfig.me
+worker_count      = 3
+master_instance   = "t3.medium"
+worker_instance   = "t3.small"
+domain_name       = ""                            # Optional: yourdomain.com
