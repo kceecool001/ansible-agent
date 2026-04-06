@@ -246,6 +246,38 @@ resource "aws_iam_role_policy_attachment" "ssm" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
+# Additional policy for EC2 Instance Connect and worker management
+resource "aws_iam_role_policy" "master_additional" {
+  name = "ansible-agent-master-additional"
+  role = aws_iam_role.master.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ec2-instance-connect:SendSSHPublicKey",
+          "ec2:DescribeInstances",
+          "ec2:DescribeInstanceStatus",
+          "autoscaling:DescribeAutoScalingGroups",
+          "autoscaling:DescribeAutoScalingInstances"
+        ]
+        Resource = "*"
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "ssm:SendCommand",
+          "ssm:GetCommandInvocation",
+          "ssm:DescribeInstanceInformation"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
+}
+
 resource "aws_iam_instance_profile" "master" {
   name = "ansible-agent-master-profile"
   role = aws_iam_role.master.name

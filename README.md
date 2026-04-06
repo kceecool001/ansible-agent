@@ -5,9 +5,11 @@ Ansible for orchestration, and Claude (Anthropic) as the AI command layer.
 
 **Version 2.0** - Enhanced with security hardening, performance optimizations, and production-ready features.
 
-📚 **New Documentation**:
+📚 **Documentation**:
+- [docs/AWS_POST_DEPLOY.md](docs/AWS_POST_DEPLOY.md) - Critical post-deployment steps for AWS
+- [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) - Common issues and solutions
 - [IMPROVEMENTS.md](IMPROVEMENTS.md) - Complete changelog of v2.0 enhancements
-- [CONFIG.md](CONFIG.md) - Configuration reference and troubleshooting guide
+- [CONFIG.md](CONFIG.md) - Configuration reference
 
 ## Architecture
 
@@ -120,7 +122,7 @@ The dashboard will begin showing real metrics within 5 seconds.
 - Terraform >= 1.7 (`brew install terraform` or https://developer.hashicorp.com/terraform/install)
 - An EC2 key pair created in your target region
 
-### Steps
+### Quick Start
 
 ```bash
 # 1. Copy and fill in the variables file
@@ -133,12 +135,41 @@ bash scripts/aws_deploy.sh plan
 # 3. Apply (creates all AWS resources — ~5 min)
 bash scripts/aws_deploy.sh apply
 
-# 4. Bootstrap workers (run once after apply)
+# 4. Configure workers (CRITICAL - run from your local machine)
 MASTER_IP=$(cd terraform && terraform output -raw master_public_ip)
-ssh ec2-user@$MASTER_IP \
-  'cd /opt/ansible-ai-agent && \
-   docker-compose exec backend \
-   ansible-playbook /ansible/playbooks/bootstrap.yml'
+chmod +x scripts/setup_workers_via_bastion.sh
+./scripts/setup_workers_via_bastion.sh ~/.ssh/your-terraform-key.pem $MASTER_IP
+```
+
+**Important**: The bootstrap playbook does NOT work reliably on Amazon Linux 2023. Use the `setup_workers_via_bastion.sh` script instead.
+
+### Detailed Post-Deployment Steps
+
+After `terraform apply` completes, workers need manual configuration:
+
+1. **The master EC2 runs Docker containers** (backend, frontend)
+2. **Workers are real EC2 instances** in private subnets that need:
+   - Ansible user with SSH key access
+   - node_exporter installed and running
+
+See [docs/AWS_POST_DEPLOY.md](docs/AWS_POST_DEPLOY.md) for complete step-by-step instructions.
+
+### Verification
+
+```bash
+# SSH to master
+ssh -i ~/.ssh/your-key.pem ec2-user@$MASTER_IP
+
+# Test node_exporter connectivity
+for ip in 10.0.11.191 10.0.11.177 10.0.10.139; do
+  curl -s http://$ip:9100/metrics | head -n1
+done
+
+# Test Ansible connectivity
+docker exec backend ansible workers -m ping -i /ansible/inventory/hosts.ini
+
+# Access dashboard via ALB
+echo "Dashboard: http://$(cd terraform && terraform output -raw alb_dns_name)"
 ```
 
 ### AWS resources created
@@ -162,6 +193,17 @@ Use Spot instances for workers to cut costs by ~70%.
 ```bash
 bash scripts/aws_deploy.sh destroy
 ```
+
+### Troubleshooting
+
+Common issues:
+
+- **"Connection refused" on port 9100**: node_exporter not running on workers. Re-run setup script.
+- **"Permission denied (publickey)"**: Ansible SSH key not deployed. See [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
+- **"Blocked request" in browser**: Vite dev server blocking ALB hostname. Switch to production frontend (see post-deploy guide)
+- **Dashboard shows no metrics**: Backend can't reach workers. Verify security groups and node_exporter status.
+
+For detailed troubleshooting, see [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md)
 
 ---
 

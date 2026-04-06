@@ -19,7 +19,9 @@ curl -SL "https://github.com/docker/compose/releases/latest/download/docker-comp
 chmod +x /usr/local/bin/docker-compose
 
 # ── Clone / pull application ───────────────────────────────────────────────
-# Replace with your actual repo URL
+# NOTE: User data only creates directory structure and config files
+# Application code (backend, frontend, docker-compose.yml) must be deployed separately
+# See docs/AWS_POST_DEPLOY.md for deployment instructions
 APP_DIR=/opt/ansible-ai-agent
 mkdir -p $APP_DIR
 cd $APP_DIR
@@ -35,13 +37,13 @@ cat ssh_keys/id_rsa.pub   # printed to log so you can distribute to workers
 # ── Environment file ───────────────────────────────────────────────────────
 cat > .env <<EOF
 ANTHROPIC_API_KEY=${anthropic_api_key}
-ANSIBLE_INVENTORY=/ansible/inventory/hosts_aws.ini
+ANSIBLE_INVENTORY=/ansible/inventory/hosts.ini
 SCRAPE_INTERVAL=5
 EOF
 
 # ── Write dynamic AWS inventory ────────────────────────────────────────────
 mkdir -p ansible/inventory
-cat > ansible/inventory/hosts_aws.ini <<INVENTORY
+cat > ansible/inventory/hosts.ini <<INVENTORY
 [master]
 master-ctrl-01 ansible_connection=local
 
@@ -49,8 +51,8 @@ master-ctrl-01 ansible_connection=local
 $(echo "${worker_ips}" | tr ',' '\n' | awk -F. '{print "worker-" NR " ansible_host=" $0}')
 
 [all:vars]
-ansible_user=ec2-user
-ansible_ssh_private_key_file=/root/.ssh/id_rsa
+ansible_user=ansible
+ansible_ssh_private_key_file=/ansible/ssh_keys/id_rsa
 ansible_ssh_common_args='-o StrictHostKeyChecking=no'
 INVENTORY
 
